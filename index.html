@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+</body>
+<script>
+    // canvas
+    let canvas = document.getElementById('canvas');
+    let ctx = canvas.getContext("2d");
+
+    //Loading of the home test image - img1
+    let img = new Image();
+    img.crossOrigin = "Anonymous";
+
+    function greyscale() {
+        let imageData = ctx.getImageData(0, 0, img.width, img.height);
+        let data = imageData.data;
+
+        for (let i = 0, n = data.length; i < n; i += 4) {
+            let red = data[i];
+            let green = data[i + 1];
+            let blue = data[i + 2];
+            let alpha = data[i + 3];
+
+            data[i] = data[i + 1] = data[i + 2] = (data[i] + data[i + 1] + data[i + 2]) / 3;
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+    }
+
+    function sharpen(){
+        let matrix = [
+            [0, -1, 0],
+            [-1, 5, -1],
+            [0, -1, 0],
+        ];
+
+        for (let cx = 0; cx < img.width; cx++) {
+            for (let cy = 0; cy < img.height; cy++){
+
+            }
+        }
+
+    }
+
+    //drawing of the test image - img1
+    img.onload = function () {
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+
+        sharpen()
+    };
+
+    img.src = '/img/neymar.jpg';
+</script>
+</html>
