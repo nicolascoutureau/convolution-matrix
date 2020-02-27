@@ -8,19 +8,33 @@
     <title>Document</title>
 </head>
 <body>
-<canvas id="canvas"></canvas>
+<canvas id="canvas-in"></canvas>
+<canvas id="canvas-out"></canvas>
 </body>
 <script>
     // canvas
-    let canvas = document.getElementById('canvas');
-    let ctx = canvas.getContext("2d");
+    let canvasIn = document.getElementById('canvas-in');
+    let ctxIn = canvasIn.getContext("2d");
+
+    let canvasOut = document.getElementById('canvas-out');
+    let ctxOut = canvasOut.getContext("2d");
 
     //Loading of the home test image - img1
     let img = new Image();
     img.crossOrigin = "Anonymous";
 
+    function getPixelAtPoint({imageData, x, y}) {
+
+        return {
+            r: imageData.data[x * 4 + imageData.width * 4 * y],
+            g: imageData.data[x * 4 + imageData.width * 4 * y + 1],
+            b: imageData.data[x * 4 + imageData.width * 4 * y + 2],
+            a: imageData.data[x * 4 + imageData.width * 4 * y + 3],
+        }
+    }
+
     function greyscale() {
-        let imageData = ctx.getImageData(0, 0, img.width, img.height);
+        let imageData = ctxIn.getImageData(0, 0, img.width, img.height);
         let data = imageData.data;
 
         for (let i = 0, n = data.length; i < n; i += 4) {
@@ -32,29 +46,50 @@
             data[i] = data[i + 1] = data[i + 2] = (data[i] + data[i + 1] + data[i + 2]) / 3;
         }
 
-        ctx.putImageData(imageData, 0, 0);
+        canvasOut.height = img.height;
+        canvasOut.width = img.width;
+        ctxOut.putImageData(imageData, 0, 0);
     }
 
-    function sharpen(){
+    function sharpen() {
         let matrix = [
             [0, -1, 0],
             [-1, 5, -1],
             [0, -1, 0],
         ];
 
-        for (let cx = 0; cx < img.width; cx++) {
-            for (let cy = 0; cy < img.height; cy++){
+        let imageData = ctxIn.getImageData(0, 0, img.width, img.height);
 
-            }
+        let imageDataOut = ctxOut.createImageData(img.width, img.height);
+
+        for (let i = 0; i < imageDataOut.data.length; i += 4) {
+
+            let x = i/4
+
+            let pixel = getPixelAtPoint({
+                imageData,
+                x: i/4,
+                y: 0
+            })
+
+            // Modify pixel data
+            imageDataOut.data[i + 0] = pixel.r;  // R value
+            imageDataOut.data[i + 1] = pixel.g;    // G value
+            imageDataOut.data[i + 2] = pixel.b;  // B value
+            imageDataOut.data[i + 3] = pixel.a;  // A value
         }
 
+
+        canvasOut.height = img.height;
+        canvasOut.width = img.width;
+        ctxOut.putImageData(imageDataOut, 0, 0);
     }
 
     //drawing of the test image - img1
     img.onload = function () {
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0);
+        canvasIn.width = img.width;
+        canvasIn.height = img.height;
+        ctxIn.drawImage(img, 0, 0);
 
         sharpen()
     };
