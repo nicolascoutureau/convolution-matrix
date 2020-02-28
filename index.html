@@ -5,26 +5,99 @@
     <meta name="viewport"
           content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title>Document</title>
+    <title>Poc</title>
+    <style>
+        canvas{
+            max-width: 50%;
+            float: left;
+        }
+    </style>
 </head>
 <body>
 <canvas id="canvas-in"></canvas>
 <canvas id="canvas-out"></canvas>
+<br>
+<button id="sharpen">Sharpen</button>
+<button id="blur">blur</button>
+<p id="time"></p>
+<br>
+<input type="file" id="fileinput">
 </body>
+<script src="https://unpkg.com/gpu.js@latest/dist/gpu-browser.min.js"></script>
 <script>
-    // canvas
     let canvasIn = document.getElementById('canvas-in');
     let ctxIn = canvasIn.getContext("2d");
-
     let canvasOut = document.getElementById('canvas-out');
     let ctxOut = canvasOut.getContext("2d");
+    let blurButton = document.getElementById('blur');
+    let sharpenButton = document.getElementById('sharpen');
+    let time = document.getElementById('time');
+    let matrices = {
+        blur: [
+            [1 / 9, 1 / 9, 1 / 9],
+            [1 / 9, 1 / 9, 1 / 9],
+            [1 / 9, 1 / 9, 1 / 9],
+        ],
+        sharpen: [
+            [0, -1, 0],
+            [-1, 5, -1],
+            [0, -1, 0],
+        ]
+    }
 
-    //Loading of the home test image - img1
     let img = new Image();
     img.crossOrigin = "Anonymous";
+    img.src = '/img/neymar.jpg';
+    img.onload = function () {
+        canvasIn.width = img.width;
+        canvasIn.height = img.height;
+        ctxIn.drawImage(img, 0, 0);
+
+        canvasOut.height = img.height;
+        canvasOut.width = img.width;
+        ctxOut.drawImage(img, 0, 0);
+    };
+
+    let fileInput = document.getElementById('fileinput');
+    fileInput.addEventListener('change', function(ev) {
+        if(ev.target.files) {
+            let file = ev.target.files[0];
+            const reader  = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onloadend = (e) => {
+                img = new Image();
+                img.src = e.target.result;
+                img.onload = (ev) => {
+                    canvasIn.width = img.width;
+                    canvasIn.height = img.height;
+                    ctxIn.drawImage(img,0,0);
+
+                    canvasOut.width = img.width;
+                    canvasOut.height = img.height;
+                    ctxOut.drawImage(img,0,0);
+                }
+            }
+        }
+    });
+
+    function flatten(arr) {
+        return arr.reduce(function (flat, toFlatten) {
+            return flat.concat(Array.isArray(toFlatten) ? flatten(toFlatten) : toFlatten);
+        }, []);
+    }
+
+    function clamp(val, min, max) {
+        return val > max ? max : val < min ? min : val;
+    }
+
+    function setPixelAtPoint({imageData, x, y, rgba}) {
+        imageData.data[x * 4 + y * imageData.width * 4] = rgba.r;
+        imageData.data[x * 4 + y * imageData.width * 4 + 1] = rgba.g;
+        imageData.data[x * 4 + y * imageData.width * 4 + 2] = rgba.b;
+        imageData.data[x * 4 + y * imageData.width * 4 + 3] = rgba.a;
+    }
 
     function getPixelAtPoint({imageData, x, y}) {
-
         return {
             r: imageData.data[x * 4 + imageData.width * 4 * y],
             g: imageData.data[x * 4 + imageData.width * 4 * y + 1],
@@ -33,76 +106,72 @@
         }
     }
 
-    function greyscale() {
-        let imageData = ctxIn.getImageData(0, 0, img.width, img.height);
-        let data = imageData.data;
+    function applyMatrixToPixel({matrix, imageData, x, y}) {
+        let pixels = [
+            getPixelAtPoint({imageData, x: x - 1, y: y - 1}),
+            getPixelAtPoint({imageData, x, y: y - 1}),
+            getPixelAtPoint({imageData, x: x + 1, y: y - 1}),
 
-        for (let i = 0, n = data.length; i < n; i += 4) {
-            let red = data[i];
-            let green = data[i + 1];
-            let blue = data[i + 2];
-            let alpha = data[i + 3];
+            getPixelAtPoint({imageData, x: x - 1, y}),
+            getPixelAtPoint({imageData, x, y}),
+            getPixelAtPoint({imageData, x: x + 1, y}),
 
-            data[i] = data[i + 1] = data[i + 2] = (data[i] + data[i + 1] + data[i + 2]) / 3;
-        }
-
-        canvasOut.height = img.height;
-        canvasOut.width = img.width;
-        ctxOut.putImageData(imageData, 0, 0);
-    }
-
-    function sharpen() {
-        let matrix = [
-            [0, -1, 0],
-            [-1, 5, -1],
-            [0, -1, 0],
+            getPixelAtPoint({imageData, x: x - 1, y: y + 1}),
+            getPixelAtPoint({imageData, x, y: y + 1}),
+            getPixelAtPoint({imageData, x: x + 1, y: y + 1}),
         ];
 
-        let imageData = ctxIn.getImageData(0, 0, img.width, img.height);
+        let newR = 0;
+        let newG = 0;
+        let newB = 0;
 
-        let imageDataOut = ctxOut.createImageData(img.width, img.height);
-
-        for (let i = 0; i < imageDataOut.data.length; i += 4) {
-
-            let x = i/4
-
-            // 12 => 1,1
-            // 12/4 = 3
-            // 3%2=1
-            // 12/8= 1.5
-
-            // 16 => 0, 2
-            // 4%2=0
-            // 16/8 = 2
-
-            let pixel = getPixelAtPoint({
-                imageData,
-                x: i/4,
-                y: 0
-            })
-
-            // Modify pixel data
-            imageDataOut.data[i + 0] = pixel.r;  // R value
-            imageDataOut.data[i + 1] = pixel.g;    // G value
-            imageDataOut.data[i + 2] = pixel.b;  // B value
-            imageDataOut.data[i + 3] = pixel.a;  // A value
+        for (let i = 0; i < pixels.length; i++) {
+            newR += (pixels[i].r) * matrix[i];
+            newG += (pixels[i].g) * matrix[i];
+            newB += (pixels[i].b) * matrix[i];
         }
 
+        return {
+            r: clamp(newR, 0, 255),
+            g: clamp(newG, 0, 255),
+            b: clamp(newB, 0, 255),
+            a: 255
+        }
+    }
+
+    function applyMatrixToImage(matrixName) {
+        const start = performance.now();
+        let matrix = flatten(
+            matrices[matrixName]
+        );
+
+        let imageData = ctxIn.getImageData(0, 0, img.width, img.height);
+        let imageDataOut = ctxOut.createImageData(img.width, img.height);
+
+        for (let y = 0; y < img.height; y++) {
+            for (let x = 0; x < img.width; x++) {
+                setPixelAtPoint({
+                    imageData: imageDataOut,
+                    x,
+                    y,
+                    rgba: applyMatrixToPixel({matrix, imageData, x, y})
+                })
+            }
+        }
 
         canvasOut.height = img.height;
         canvasOut.width = img.width;
         ctxOut.putImageData(imageDataOut, 0, 0);
+
+        time.textContent = 'It took ' + Math.round(performance.now() - start) + ' ms to ' + matrixName;
     }
 
-    //drawing of the test image - img1
-    img.onload = function () {
-        canvasIn.width = img.width;
-        canvasIn.height = img.height;
-        ctxIn.drawImage(img, 0, 0);
+    blurButton.addEventListener('click', function (e) {
+        applyMatrixToImage('blur')
+    });
 
-        sharpen()
-    };
-
-    img.src = '/img/neymar.jpg';
+    sharpenButton.addEventListener('click', function (e) {
+        applyMatrixToImage('sharpen')
+    })
 </script>
 </html>
